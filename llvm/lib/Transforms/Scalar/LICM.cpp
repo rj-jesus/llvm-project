@@ -839,6 +839,62 @@ public:
 };
 } // namespace
 
+static Instruction* hoistBOAssociation(Instruction &I, Loop &L,
+                                       ICFLoopSafetyInfo &SafetyInfo,
+                                       MemorySSAUpdater &MSSAU,
+                                       AssumptionCache *AC,
+                                       DominatorTree *DT) {
+  if (!isa<BinaryOperator>(I))
+    return nullptr;
+
+  Instruction::BinaryOps Opcode = dyn_cast<BinaryOperator>(&I)->getOpcode();
+  BinaryOperator *Op0 = dyn_cast<BinaryOperator>(I.getOperand(0));
+
+  auto ClearSubclassDataAfterReassociation = [](Instruction &I) {
+    FPMathOperator *FPMO = dyn_cast<FPMathOperator>(&I);
+    if (!FPMO) {
+      I.clearSubclassOptionalData();
+      return;
+    }
+
+    FastMathFlags FMF = I.getFastMathFlags();
+    I.clearSubclassOptionalData();
+    I.setFastMathFlags(FMF);
+  };
+
+  if (I.isAssociative()) {
+    // Transform: "(LV op C1) op C2" ==> "LV op (C1 op C2)"
+    if (Op0 && Op0->getOpcode() == Opcode) {
+      Value *LV = Op0->getOperand(0);
+      Value *C1 = Op0->getOperand(1);
+      Value *C2 = I.getOperand(1);
+
+      if (L.isLoopInvariant(LV) || !L.isLoopInvariant(C1) ||
+          !L.isLoopInvariant(C2))
+        return nullptr;
+
+      bool singleUseOp0 = Op0->hasOneUse();
+
+      // Conservatively clear all optional flags since they may not be
+      // preserved by the reassociation, but preserve fast-math flags where
+      // applicable,
+      ClearSubclassDataAfterReassociation(I);
+
+      auto *V = BinaryOperator::Create(Opcode, C1, C2, "invariant.op", &I);
+      I.setOperand(0, LV);
+      I.setOperand(1, V);
+
+      // Note: (LV op CV1) might not be erased if it has more than one use.
+      if (singleUseOp0)
+        eraseInstruction(cast<Instruction>(*Op0), SafetyInfo, MSSAU);
+
+      return V;
+    }
+  }
+
+  return nullptr;
+}
+
 /// Walk the specified region of the CFG (defined by all blocks dominated by
 /// the specified block, and that are in the current loop) in depth first
 /// order w.r.t the DominatorTree.  This allows us to visit definitions before
@@ -968,6 +1024,14 @@ bool llvm::hoistRegion(DomTreeNode *N, AAResults *AA, LoopInfo *LI,
           Changed = true;
           continue;
         }
+      }
+
+      if (auto *NewI = hoistBOAssociation(I, *CurLoop, *SafetyInfo, MSSAU, AC,
+                                          DT)) {
+        hoist(*NewI, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB), SafetyInfo,
+              MSSAU, SE, ORE);
+        Changed = true;
+        continue;
       }
 
       // Remember possibly hoistable branches so we can actually hoist them
