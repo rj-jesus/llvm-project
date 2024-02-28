@@ -841,9 +841,7 @@ public:
 
 static Instruction* hoistBOAssociation(Instruction &I, Loop &L,
                                        ICFLoopSafetyInfo &SafetyInfo,
-                                       MemorySSAUpdater &MSSAU,
-                                       AssumptionCache *AC,
-                                       DominatorTree *DT) {
+                                       MemorySSAUpdater &MSSAU) {
   if (!isa<BinaryOperator>(I))
     return nullptr;
 
@@ -1026,8 +1024,7 @@ bool llvm::hoistRegion(DomTreeNode *N, AAResults *AA, LoopInfo *LI,
         }
       }
 
-      if (auto *NewI = hoistBOAssociation(I, *CurLoop, *SafetyInfo, MSSAU, AC,
-                                          DT)) {
+      if (auto *NewI = hoistBOAssociation(I, *CurLoop, *SafetyInfo, MSSAU)) {
         hoist(*NewI, DT, CurLoop, CFH.getOrCreateHoistedBlock(BB), SafetyInfo,
               MSSAU, SE, ORE);
         Changed = true;
