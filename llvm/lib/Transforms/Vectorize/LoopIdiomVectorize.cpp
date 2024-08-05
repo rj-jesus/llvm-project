@@ -149,14 +149,14 @@ private:
                              unsigned VF, unsigned CharWidth,
                              BasicBlock *ExitSucc, BasicBlock *ExitFail,
                              GetElementPtrInst *GEPA, GetElementPtrInst *GEPB,
-                             Value *StartA, Value *EndA,
-                             Value *StartB, Value *EndB);
+                             Value *StartA, Value *EndA, Value *StartB,
+                             Value *EndB);
 
   void transformFindFirstByte(PHINode *IndPhi, unsigned VF, unsigned CharWidth,
                               BasicBlock *ExitSucc, BasicBlock *ExitFail,
                               GetElementPtrInst *GEPA, GetElementPtrInst *GEPB,
-                              Value *StartA, Value *EndA,
-                              Value *StartB, Value *EndB);
+                              Value *StartA, Value *EndA, Value *StartB,
+                              Value *EndB);
   /// @}
 };
 } // anonymous namespace
@@ -1010,23 +1010,23 @@ bool LoopIdiomVectorize::recognizeFindFirstByte() {
   // We are expecting the following blocks below. For now, we will bail out for
   // anything deviating from this.
   //
-  // .preheader:                                       ; preds = %.preheader.preheader, %23
+  // .preheader:
   //   %14 = phi ptr [ %24, %23 ], [ %3, %.preheader.preheader ]
   //   %15 = load i8, ptr %14, align 1, !tbaa !14
   //   br label %19
   //
-  // 19:                                               ; preds = %16, %.preheader
+  // 19:
   //   %20 = phi ptr [ %7, %.preheader ], [ %17, %16 ]
   //   %21 = load i8, ptr %20, align 1, !tbaa !14
   //   %22 = icmp eq i8 %15, %21
   //   br i1 %22, label %.loopexit.loopexit, label %16
   //
-  // 16:                                               ; preds = %19
+  // 16:
   //   %17 = getelementptr inbounds i8, ptr %20, i64 1
   //   %18 = icmp eq ptr %17, %10
   //   br i1 %18, label %23, label %19, !llvm.loop !15
   //
-  // 23:                                               ; preds = %16
+  // 23:
   //   %24 = getelementptr inbounds i8, ptr %14, i64 1
   //   %25 = icmp eq ptr %24, %6
   //   br i1 %25, label %.loopexit.loopexit5, label %.preheader, !llvm.loop !17
@@ -1096,8 +1096,8 @@ bool LoopIdiomVectorize::recognizeFindFirstByte() {
   // values.
   PHINode *PNA = dyn_cast<PHINode>(A);
   PHINode *PNB = dyn_cast<PHINode>(B);
-  if (!PNA || PNA->getNumIncomingValues() != 2 ||
-      !PNB || PNB->getNumIncomingValues() != 2)
+  if (!PNA || PNA->getNumIncomingValues() != 2 || !PNB ||
+      PNB->getNumIncomingValues() != 2)
     return false;
 
   // One PHI comes from the outer loop, the other one from the inner loop.
@@ -1139,8 +1139,7 @@ bool LoopIdiomVectorize::recognizeFindFirstByte() {
   if (!match(InnerBB->getTerminator(),
              m_Br(m_ICmp(MatchPred, m_Specific(GEPB), m_Value(EndB)),
                   m_BasicBlock(OuterBB), m_Specific(MatchBB))) ||
-      MatchPred != ICmpInst::Predicate::ICMP_EQ ||
-      !CurLoop->contains(OuterBB))
+      MatchPred != ICmpInst::Predicate::ICMP_EQ || !CurLoop->contains(OuterBB))
     return false;
 
   // OuterBB should increment the address of the element we are looking for.
@@ -1152,8 +1151,7 @@ bool LoopIdiomVectorize::recognizeFindFirstByte() {
       MatchPred != ICmpInst::Predicate::ICMP_EQ)
     return false;
 
-  LLVM_DEBUG(dbgs() << "FOUND IDIOM IN LOOP: \n"
-                    << *CurLoop << "\n\n");
+  LLVM_DEBUG(dbgs() << "FOUND IDIOM IN LOOP: \n" << *CurLoop << "\n\n");
 
   transformFindFirstByte(IndPhi, VF, CharWidth, ExitSucc, ExitFail, GEPA, GEPB,
                          StartA, EndA, StartB, EndB);
@@ -1162,9 +1160,9 @@ bool LoopIdiomVectorize::recognizeFindFirstByte() {
 
 Value *LoopIdiomVectorize::expandFindFirstByte(
     IRBuilder<> &Builder, DomTreeUpdater &DTU, unsigned VF, unsigned CharWidth,
-    BasicBlock *ExitSucc, BasicBlock *ExitFail,
-    GetElementPtrInst *GEPA, GetElementPtrInst *GEPB,
-    Value *StartA, Value *EndA, Value *StartB, Value *EndB) {
+    BasicBlock *ExitSucc, BasicBlock *ExitFail, GetElementPtrInst *GEPA,
+    GetElementPtrInst *GEPB, Value *StartA, Value *EndA, Value *StartB,
+    Value *EndB) {
   // Set up some types and constants that we intend to reuse.
   auto *I64Ty = Builder.getInt64Ty();
   auto *I32Ty = Builder.getInt32Ty();
@@ -1248,10 +1246,10 @@ Value *LoopIdiomVectorize::expandFindFirstByte(
                                   GEPA->isInBounds());
   Value *CheckIncA = Builder.CreateICmpUGT(IncA, EndA);
   Value *SelA = Builder.CreateSelect(CheckIncA, EndA, IncA);
-  Value *PredA = Builder.CreateIntrinsic(
-      Intrinsic::get_active_lane_mask, {PredVTy, I64Ty},
-      {Builder.CreatePointerCast(PNA, I64Ty),
-       Builder.CreatePointerCast(SelA, I64Ty)});
+  Value *PredA =
+      Builder.CreateIntrinsic(Intrinsic::get_active_lane_mask, {PredVTy, I64Ty},
+                              {Builder.CreatePointerCast(PNA, I64Ty),
+                               Builder.CreatePointerCast(SelA, I64Ty)});
   Value *LoadA =
       Builder.CreateMaskedLoad(CharVTy, PNA, Align(1), PredA, Passthru);
   Value *PredBInit = Builder.CreateIntrinsic(
@@ -1266,8 +1264,8 @@ Value *LoopIdiomVectorize::expandFindFirstByte(
   PHINode *PredBFull = Builder.CreatePHI(PredVTy, 2);
   Value *CheckB = Builder.CreateICmpULT(PNB, EndB);
   Builder.CreateCondBr(CheckB, BB4, BB1);
-  DTU.applyUpdates({{DominatorTree::Insert, BB3, BB4},
-                    {DominatorTree::Insert, BB3, BB1}});
+  DTU.applyUpdates(
+      {{DominatorTree::Insert, BB3, BB4}, {DominatorTree::Insert, BB3, BB1}});
 
   // (4) Check load B.
   Builder.SetInsertPoint(BB4);
@@ -1275,8 +1273,8 @@ Value *LoopIdiomVectorize::expandFindFirstByte(
                                   GEPB->isInBounds());
   Value *IfNotFullB = Builder.CreateICmpUGT(IncB, EndB);
   Builder.CreateCondBr(IfNotFullB, BB6, BB5);
-  DTU.applyUpdates({{DominatorTree::Insert, BB4, BB6},
-                    {DominatorTree::Insert, BB4, BB5}});
+  DTU.applyUpdates(
+      {{DominatorTree::Insert, BB4, BB6}, {DominatorTree::Insert, BB4, BB5}});
 
   // (5) Full load B.
   Builder.SetInsertPoint(BB5);
@@ -1287,10 +1285,10 @@ Value *LoopIdiomVectorize::expandFindFirstByte(
 
   // (6) Partial load B.
   Builder.SetInsertPoint(BB6);
-  Value *PredBPart = Builder.CreateIntrinsic(
-      Intrinsic::get_active_lane_mask, {PredVTy, I64Ty},
-      {Builder.CreatePointerCast(PNB, I64Ty),
-       Builder.CreatePointerCast(EndB, I64Ty)});
+  Value *PredBPart =
+      Builder.CreateIntrinsic(Intrinsic::get_active_lane_mask, {PredVTy, I64Ty},
+                              {Builder.CreatePointerCast(PNB, I64Ty),
+                               Builder.CreatePointerCast(EndB, I64Ty)});
   Value *LoadBPart =
       Builder.CreateMaskedLoad(CharVTy, PNB, Align(1), PredBPart, Passthru);
   Value *LoadB0 = Builder.CreateExtractElement(LoadBPart, uint64_t(0));
@@ -1309,8 +1307,8 @@ Value *LoopIdiomVectorize::expandFindFirstByte(
       {LoadA, LoadB, PredA, ConstantInt::get(I32Ty, VF)});
   Value *IfAnyMatch = Builder.CreateOrReduce(MatchPred);
   Builder.CreateCondBr(IfAnyMatch, BB8, BB3);
-  DTU.applyUpdates({{DominatorTree::Insert, BB7, BB8},
-                    {DominatorTree::Insert, BB7, BB3}});
+  DTU.applyUpdates(
+      {{DominatorTree::Insert, BB7, BB8}, {DominatorTree::Insert, BB7, BB3}});
 
   // (8) Match success.
   Builder.SetInsertPoint(BB8);
@@ -1350,9 +1348,8 @@ Value *LoopIdiomVectorize::expandFindFirstByte(
 }
 
 void LoopIdiomVectorize::transformFindFirstByte(
-    PHINode *IndPhi, unsigned VF, unsigned CharWidth,
-    BasicBlock *ExitSucc, BasicBlock *ExitFail,
-    GetElementPtrInst *GEPA, GetElementPtrInst *GEPB,
+    PHINode *IndPhi, unsigned VF, unsigned CharWidth, BasicBlock *ExitSucc,
+    BasicBlock *ExitFail, GetElementPtrInst *GEPA, GetElementPtrInst *GEPB,
     Value *StartA, Value *EndA, Value *StartB, Value *EndB) {
   // Insert the find first byte code at the end of the preheader block.
   BasicBlock *Preheader = CurLoop->getLoopPreheader();
@@ -1362,8 +1359,8 @@ void LoopIdiomVectorize::transformFindFirstByte(
   Builder.SetCurrentDebugLocation(PHBranch->getDebugLoc());
 
   Value *MatchVal =
-      expandFindFirstByte(Builder, DTU, VF, CharWidth, ExitSucc, ExitFail,
-                          GEPA, GEPB, StartA, EndA, StartB, EndB);
+      expandFindFirstByte(Builder, DTU, VF, CharWidth, ExitSucc, ExitFail, GEPA,
+                          GEPB, StartA, EndA, StartB, EndB);
 
   assert(PHBranch->isUnconditional() &&
          "Expected preheader to terminate with an unconditional branch.");
@@ -1378,6 +1375,4 @@ void LoopIdiomVectorize::transformFindFirstByte(
   // Maybe EliminateUnreachableBlocks ? I've left them for now because we may
   // want to reuse them to implement an alternative path for small arrays, for
   // example.
-
-  //dbgs() << *Preheader->getParent() << "\n";
 }
