@@ -3841,7 +3841,7 @@ bool AArch64TTIImpl::hasVectorMatch(VectorType *VT, unsigned SegSize) const {
   if (ST->hasSVE2() && ST->isSVEAvailable() &&
       VT->getPrimitiveSizeInBits().getKnownMinValue() == 128 &&
       VT->getElementCount().getKnownMinValue() == SegSize &&
-      (VT->getElementCount().getKnownMinValue() ==  8 ||
+      (VT->getElementCount().getKnownMinValue() == 8 ||
        VT->getElementCount().getKnownMinValue() == 16))
     return true;
   return false;

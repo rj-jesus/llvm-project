@@ -6122,7 +6122,7 @@ SDValue AArch64TargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
     assert(Op1.getValueType() == Op2.getValueType() && "Type mismatch.");
     assert(Op1.getValueSizeInBits().getKnownMinValue() == 128 &&
            "Custom lower only works on 128-bit segments.");
-    assert((Op1.getValueType().getVectorElementType() == MVT::i8  ||
+    assert((Op1.getValueType().getVectorElementType() == MVT::i8 ||
             Op1.getValueType().getVectorElementType() == MVT::i16) &&
            "Custom lower only supports 8-bit or 16-bit characters.");
     assert(SegmentSize == MinNumElts && "Custom lower needs segment size to "
