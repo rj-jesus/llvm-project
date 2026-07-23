@@ -1207,7 +1207,7 @@ bool AArch64RegisterInfo::getRegAllocationHints(
   if (AArch64::ZPRRegClass.hasSubClassEq(RegRC)) {
     for (const MachineOperand &DefOp : MRI.def_operands(VirtReg)) {
       const MachineInstr &Def = *DefOp.getParent();
-      if (DefOp.isImplicit() ||
+      if (DefOp.isImplicit() || !Def.isPseudo() ||
           (TII->get(Def.getOpcode()).TSFlags & AArch64::FalseLanesMask) !=
               AArch64::FalseLanesUndef)
         continue;
